@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Logger (Layered Music Ver)</title>
+<title>Data Logger (Drum & Snare Ver)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
   body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; transition: background 0.5s; }
@@ -32,8 +32,8 @@
 <div id="status">停止中</div>
 <div>
   <span id="ind-melody" class="layer-indicator layer-on">Melody</span>
-  <span id="ind-drum" class="layer-indicator">Drum (Std>5.0)</span>
-  <span id="ind-harmony" class="layer-indicator">Harmony (Std>8.0)</span>
+  <span id="ind-drum" class="layer-indicator">Drum (Std>3.0)</span>
+  <span id="ind-harmony" class="layer-indicator">Harmony (Std>5.0)</span>
 </div>
 <div id="debug">Wait...</div>
 
@@ -44,14 +44,14 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbxGAOkqkvLAykyJbOldYCZ2
 // シンセ定義
 // ==========================================
 
-// メインメロディ（少し硬めの音）
+// メインメロディ
 const polySynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: "sawtooth" },
   envelope: { attack: 0.05, decay: 0.2, sustain: 0.3, release: 1 },
   volume: -8
 }).toDestination();
 
-// ハーモニー用（柔らかい音）
+// ハーモニー用
 const harmonySynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: "triangle" },
   envelope: { attack: 0.1, decay: 0.5, sustain: 0.5, release: 1.5 },
@@ -65,6 +65,12 @@ const kickSynth = new Tone.MembraneSynth({
   oscillator: { type: "sine" },
   envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4 },
   volume: -5
+}).toDestination();
+
+// ドラム（スネア） ※追加
+const snareSynth = new Tone.NoiseSynth({
+  noise: { type: "white" },
+  envelope: { attack: 0.001, decay: 0.2, sustain: 0 }
 }).toDestination();
 
 // ==========================================
@@ -85,7 +91,7 @@ let exploratoryActionCount = 0;
 let isUserMoving = false;
 const MOVE_THRESHOLD = 2.0;
 
-// レイヤー閾値
+// レイヤー閾値（変更しました）
 const THRESHOLD_DRUM = 3.0;
 const THRESHOLD_HARMONY = 5.0;
 
@@ -112,22 +118,22 @@ const patterns = {
   ]
 };
 
-// ハーモニー (メインに対して3度または5度、あるいはコードトーンを追加)
+// ハーモニー
 const harmonyPatterns = {
   A1: [ 
-    "E2","B2","G3","D4","F#4","B4","G5",null, // Cmaj9的な響き
+    "E2","B2","G3","D4","F#4","B4","G5",null, 
     "E5","C5","B4","G4","E4","C4","B3","G3"
   ],
   A2: [
-    "F2","C3","A3","E4","G4","C5","F5","A5", // Dm7 -> Fmaj7系
+    "F2","C3","A3","E4","G4","C5","F5","A5", 
     "D5","B4","A4","F4","D4","B3","A3","F3"
   ],
   B1: [ 
-    "E3",null,"G4","B4","D5",null,"E5","B3", // Cmaj -> Em系
+    "E3",null,"G4","B4","D5",null,"E5","B3", 
     "C4","E4","G4","B4","C5","E5","G5",null
   ],
   B2: [ 
-    "A3","C4","E4","G4","B4","C5","E5",null, // Fmaj -> Am系
+    "A3","C4","E4","G4","B4","C5","E5",null, 
     "B2","D3","F3","A3","B3","D4","F4","B4"
   ]
 };
@@ -164,7 +170,7 @@ document.getElementById("start").onclick = async () => {
   logData = [];
   exploratoryActionCount = 0;
 
-  setInterval(updateLoop, 100); // ログとUI更新用
+  setInterval(updateLoop, 100);
 
   document.getElementById("status").innerText = "歩いてください (ID: " + subjectId + ")";
   document.getElementById("start").style.display = "none";
@@ -195,7 +201,6 @@ function handleMotion(e) {
 
   currentStd = computeMeanStd(motionHistory.map(d=>d.val)).std;
 
-  // 初回トリガー (動いたら開始)
   if (!isPlaying && mag > 13.0) startSequence();
 }
 
@@ -205,11 +210,9 @@ function handleMotion(e) {
 function updateLoop() {
   if (!isPlaying) return;
 
-  // レイヤー判定
   const isDrumActive = currentStd >= THRESHOLD_DRUM;
   const isHarmonyActive = currentStd >= THRESHOLD_HARMONY;
 
-  // UI更新
   document.getElementById("ind-drum").className = isDrumActive ? "layer-indicator layer-on" : "layer-indicator";
   document.getElementById("ind-harmony").className = isHarmonyActive ? "layer-indicator layer-on" : "layer-indicator";
 
@@ -227,8 +230,8 @@ function updateLoop() {
     std: currentStd.toFixed(4),
     bpm: 108,
     isMoving: isUserMoving ? 1 : 0,
-    drumLayer: isDrumActive ? 1 : 0,    // ドラムON/OFFも記録
-    harmonyLayer: isHarmonyActive ? 1 : 0, // ハーモニーON/OFFも記録
+    drumLayer: isDrumActive ? 1 : 0,
+    harmonyLayer: isHarmonyActive ? 1 : 0,
     switchCount: exploratoryActionCount
   });
 }
@@ -253,25 +256,30 @@ function playNextNote() {
   }
 
   const beatTime = 60 / currentBPM;
-  const base = beatTime / 2; // 8分音符ベース
+  const base = beatTime / 2;
   const swing = 0.25;
   const duration = currentNoteIndex % 2 === 0
     ? base * (1 + swing)
     : base * (1 - swing);
 
-  // 1. メインメロディ再生 (常時)
+  // 1. メインメロディ
   const note = melodyList[currentNoteIndex];
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
-  // 2. ドラムレイヤー判定 (Std >= 5.0)
+  // 2. ドラムレイヤー (Std >= 3.0)
+  // ドン・タン・ドン・タン のビートに変更
   if (currentStd >= THRESHOLD_DRUM) {
-    // 4拍子 (0, 4, 8, 12番目のステップでキック)
-    if (currentNoteIndex % 4 === 0) {
+    // Kick: 1拍目(0) と 3拍目(8)
+    if (currentNoteIndex === 0 || currentNoteIndex === 8) {
       kickSynth.triggerAttackRelease("C1", "8n");
+    }
+    // Snare: 2拍目(4) と 4拍目(12)
+    if (currentNoteIndex === 4 || currentNoteIndex === 12) {
+      snareSynth.triggerAttackRelease("8n");
     }
   }
 
-  // 3. ハーモニーレイヤー判定 (Std >= 8.0)
+  // 3. ハーモニーレイヤー (Std >= 5.0)
   if (currentStd >= THRESHOLD_HARMONY) {
     const harmNote = harmonyList[currentNoteIndex];
     if (harmNote) {
@@ -294,7 +302,6 @@ function finishSequence() {
   currentPatternIndex = (currentPatternIndex + 1) % playOrder.length;
   document.getElementById("status").innerText = "待機中...";
   
-  // 停止中はインジケーターをオフ
   document.getElementById("ind-drum").className = "layer-indicator";
   document.getElementById("ind-harmony").className = "layer-indicator";
 }
