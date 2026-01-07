@@ -277,15 +277,10 @@ function playNextNote() {
     // ハイハット: 毎回鳴らす（8分音符刻み＝2倍の密度）
     //hatSynth.triggerAttackRelease("16n");
 
-    // Kick: 1拍目(0) と 3拍目(8)
-    if (
-          currentNoteIndex === 0 ||
-          currentNoteIndex === 4 ||
-          currentNoteIndex === 8 ||
-          currentNoteIndex === 12
-        ) {
-          kickSynth.triggerAttackRelease("C1", "8n");
-        }
+    // Kick
+    if (currentNoteIndex % 2 === 0) {
+      kickSynth.triggerAttackRelease("C1", "16n");
+    }
 
     // Snare: 2拍目(4) と 4拍目(12) （音色を優しく変更済み）
     if (currentNoteIndex === 4 || currentNoteIndex === 12) {
