@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Logger (Drum & Snare Ver)</title>
+<title>Data Logger (Soft Snare & 8-Beat Ver)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
   body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; transition: background 0.5s; }
@@ -14,7 +14,6 @@
   #status, #debug { margin: 15px 0; font-size: 1.2em; }
   #debug { color: #666; font-size: 0.9em; }
   .active { background: #e0f7fa; }
-  /* レイヤー状態の可視化 */
   .layer-indicator { display: inline-block; padding: 5px 10px; margin: 5px; border-radius: 4px; color: #ccc; background: #ddd; font-size: 0.8em; }
   .layer-on { background: #ff9800; color: white; font-weight: bold; }
 </style>
@@ -58,7 +57,7 @@ const harmonySynth = new Tone.PolySynth(Tone.Synth, {
   volume: -10
 }).toDestination();
 
-// ドラム（キック）
+// ドラム：キック
 const kickSynth = new Tone.MembraneSynth({
   pitchDecay: 0.05,
   octaves: 4,
@@ -67,10 +66,19 @@ const kickSynth = new Tone.MembraneSynth({
   volume: -5
 }).toDestination();
 
-// ドラム（スネア） ※追加
+// ドラム：スネア（優しく変更）
+// WhiteノイズからPinkノイズへ変更し、Decayを短く、音量を下げました
 const snareSynth = new Tone.NoiseSynth({
+  noise: { type: "pink" }, 
+  envelope: { attack: 0.001, decay: 0.1, sustain: 0 }, 
+  volume: -15 
+}).toDestination();
+
+// ドラム：ハイハット（8分刻み用に追加）
+const hatSynth = new Tone.NoiseSynth({
   noise: { type: "white" },
-  envelope: { attack: 0.001, decay: 0.2, sustain: 0 }
+  envelope: { attack: 0.001, decay: 0.05, sustain: 0 },
+  volume: -15
 }).toDestination();
 
 // ==========================================
@@ -91,14 +99,13 @@ let exploratoryActionCount = 0;
 let isUserMoving = false;
 const MOVE_THRESHOLD = 2.0;
 
-// レイヤー閾値（変更しました）
+// レイヤー閾値
 const THRESHOLD_DRUM = 3.0;
 const THRESHOLD_HARMONY = 5.0;
 
 // ==========================================
-// メロディ & ハーモニーパターン定義
+// パターン定義
 // ==========================================
-// メインメロディ
 const patterns = {
   A1: [ 
     "C2","G2","E3","B3","D4","G4","E5",null,
@@ -118,7 +125,6 @@ const patterns = {
   ]
 };
 
-// ハーモニー
 const harmonyPatterns = {
   A1: [ 
     "E2","B2","G3","D4","F#4","B4","G5",null, 
@@ -267,13 +273,15 @@ function playNextNote() {
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
   // 2. ドラムレイヤー (Std >= 3.0)
-  // ドン・タン・ドン・タン のビートに変更
   if (currentStd >= THRESHOLD_DRUM) {
+    // ハイハット: 毎回鳴らす（8分音符刻み＝2倍の密度）
+    hatSynth.triggerAttackRelease("16n");
+
     // Kick: 1拍目(0) と 3拍目(8)
     if (currentNoteIndex === 0 || currentNoteIndex === 8) {
       kickSynth.triggerAttackRelease("C1", "8n");
     }
-    // Snare: 2拍目(4) と 4拍目(12)
+    // Snare: 2拍目(4) と 4拍目(12) （音色を優しく変更済み）
     if (currentNoteIndex === 4 || currentNoteIndex === 12) {
       snareSynth.triggerAttackRelease("8n");
     }
