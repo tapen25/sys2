@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Logger (ID ver)</title>
+<title>Data Logger (Layered Ver)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
   body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; transition: background 0.5s; }
@@ -14,6 +14,9 @@
   #status, #debug { margin: 15px 0; font-size: 1.2em; }
   #debug { color: #666; font-size: 0.9em; }
   .active { background: #e0f7fa; }
+  /* レイヤー状態の可視化 */
+  .layer-indicator { font-size: 0.8em; color: #888; margin-top: 5px; }
+  .layer-on { color: #ff5722; font-weight: bold; }
 </style>
 </head>
 
@@ -28,29 +31,46 @@
 
 <div id="status">停止中</div>
 <div id="debug">Wait...</div>
+<div id="layer-status" class="layer-indicator">
+  <span id="layer-drum">DRUMS: OFF</span> | <span id="layer-harmony">HARMONY: OFF</span>
+</div>
 
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxGAOkqkvLAykyJbOldYCZ2qeAh-RpO5i9Mxd0qpktd6pP1246Zu7S4XwJit3KAUSU/exec";
 
 // ==========================================
-// シンセ定義（フィルターなし・固定）
+// シンセ定義
 // ==========================================
+// 1. メロディ（主旋律）
 const polySynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: "sawtooth" },
   envelope: { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1 },
   volume: -5
 }).toDestination();
 
-const kickSynth = new Tone.MonoSynth({
-  oscillator: { type: "sawtooth" },
-  envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 },
-  volume: -20
+// 2. ハモリ用（柔らかい音）
+const harmonySynth = new Tone.PolySynth(Tone.Synth, {
+  oscillator: { type: "triangle" }, // メロディと区別するため三角波
+  envelope: { attack: 0.1, decay: 0.3, sustain: 0.4, release: 1 },
+  volume: -8
 }).toDestination();
 
+// 3. ドラム（キック）
+const kickSynth = new Tone.MembraneSynth({
+  pitchDecay: 0.05,
+  octaves: 10,
+  oscillator: { type: "sine" },
+  envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4 },
+  volume: -10
+}).toDestination();
+
+// 4. ベース（ドラムレイヤーの補助）
 const bassSynth = new Tone.MonoSynth({
-  oscillator: { type: "triangle" },
-  envelope: { attack: 0.1, decay: 0.5, sustain: 0.8, release: 1 },
-  volume: -30
+  oscillator: { type: "square" },
+  filter: { Q: 6, type: "lowpass", rollover: -12 },
+  envelope: { attack: 0.05, decay: 0.2, sustain: 0.4, release: 0.5 },
+  filterEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.5, release: 0.5, baseFrequency: 200, octaves: 2 },
+  volume: -15
 }).toDestination();
 
 // ==========================================
@@ -59,7 +79,6 @@ const bassSynth = new Tone.MonoSynth({
 let isPlaying = false;
 let currentNoteIndex = 0;
 let currentBPM = 108;
-let targetBPM = 108;
 
 let motionHistory = [];
 const HISTORY_DURATION = 1500;
@@ -96,15 +115,17 @@ const patterns = {
 const playOrder = ["A1", "B1", "A2", "B2"];
 let currentPatternIndex = 0;
 
-//let usePatternA = true;
-
 // ==========================================
 // Wake Lock
 // ==========================================
 let wakeLock = null;
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
-    wakeLock = await navigator.wakeLock.request('screen');
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+      console.log(`${err.name}, ${err.message}`);
+    }
   }
 }
 
@@ -143,9 +164,10 @@ document.getElementById("start").onclick = async () => {
 document.getElementById("send-btn").onclick = sendCSVToGmail;
 
 // ==========================================
-// 加速度処理（テンポ固定）
+// 加速度処理
 // ==========================================
 function computeMeanStd(arr) {
+  if(arr.length === 0) return { std: 0 };
   const mean = arr.reduce((s,v)=>s+v,0)/arr.length;
   const variance = arr.reduce((s,v)=>s+(v-mean)**2,0)/arr.length;
   return { std: Math.sqrt(variance) };
@@ -163,17 +185,15 @@ function handleMotion(e) {
 
   currentStd = computeMeanStd(motionHistory.map(d=>d.val)).std;
 
+  // 開始トリガー（13.0以上で再生開始）
   if (!isPlaying && mag > 13.0) startSequence();
 }
 
 // ==========================================
-// ログ更新
+// ログ更新 & 画面表示
 // ==========================================
 function updateLoop() {
   if (!isPlaying) return;
-
-  currentBPM = 108;
-  targetBPM = 108;
 
   const nowMoving = currentStd > MOVE_THRESHOLD;
   if (nowMoving !== isUserMoving) {
@@ -181,8 +201,23 @@ function updateLoop() {
     isUserMoving = nowMoving;
   }
 
+  // Debug表示更新
   document.getElementById("debug").innerText =
     `BPM: 108 / Std: ${currentStd.toFixed(2)}`;
+
+  // レイヤー状態の表示更新
+  const drumOn = currentStd >= 5.0;
+  const harmOn = currentStd >= 8.0;
+  
+  const drumElem = document.getElementById("layer-drum");
+  const harmElem = document.getElementById("layer-harmony");
+
+  drumElem.innerText = drumOn ? "DRUMS: ON" : "DRUMS: OFF";
+  drumElem.className = drumOn ? "layer-on" : "";
+  
+  harmElem.innerText = harmOn ? "HARMONY: ON" : "HARMONY: OFF";
+  harmElem.className = harmOn ? "layer-on" : "";
+
 
   logData.push({
     time: ((performance.now() - startTime)/1000).toFixed(3),
@@ -194,14 +229,14 @@ function updateLoop() {
 }
 
 // ==========================================
-// シーケンス
+// シーケンス再生
 // ==========================================
 function startSequence() {
+  if(isPlaying) return;
   isPlaying = true;
   currentNoteIndex = 0;
   playNextNote();
 }
-
 
 function playNextNote() {
   const patternKey = playOrder[currentPatternIndex];
@@ -213,14 +248,45 @@ function playNextNote() {
   }
 
   const beatTime = 60 / currentBPM;
-  const base = beatTime / 2;
+  const base = beatTime / 2; // 8分音符ベース
   const swing = 0.25;
   const duration = currentNoteIndex % 2 === 0
     ? base * (1 + swing)
     : base * (1 - swing);
 
   const note = pattern[currentNoteIndex];
-  if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
+
+  // ----------------------------------------
+  // 1. メロディレイヤー (常時)
+  // ----------------------------------------
+  if (note) {
+    polySynth.triggerAttackRelease(note, duration * 0.8);
+  }
+
+  // ----------------------------------------
+  // 2. ドラムレイヤー (Std >= 5.0)
+  // ----------------------------------------
+  if (currentStd >= 5.0) {
+    // 4ビートごとにキック (0, 4, 8, 12)
+    if (currentNoteIndex % 4 === 0) {
+      kickSynth.triggerAttackRelease("C1", "8n");
+    }
+    // 裏拍にベースを入れてグルーヴを出す (2, 6, 10, 14)
+    else if (currentNoteIndex % 4 === 2) {
+       // ルート音を適当に決める（C2固定などシンプルに）
+       bassSynth.triggerAttackRelease("C2", "16n");
+    }
+  }
+
+  // ----------------------------------------
+  // 3. ハモリレイヤー (Std >= 8.0)
+  // ----------------------------------------
+  if (currentStd >= 8.0 && note) {
+    // 現在のノートから完全5度上の音を生成してハモる
+    // (Tone.Frequencyを使ってトランスポーズ)
+    const harmonyNote = Tone.Frequency(note).transpose(7).toNote();
+    harmonySynth.triggerAttackRelease(harmonyNote, duration * 0.8);
+  }
 
   document.getElementById("status").innerText =
     `再生中 ${patternKey} (${currentNoteIndex + 1}/16)`;
@@ -231,18 +297,14 @@ function playNextNote() {
   }, duration * 1000);
 }
 
-
 function finishSequence() {
   isPlaying = false;
   currentNoteIndex = 0;
 
-  // 次の16音パターンへ
-  currentPatternIndex =
-    (currentPatternIndex + 1) % playOrder.length;
-
+  // 次のパターンへ
+  currentPatternIndex = (currentPatternIndex + 1) % playOrder.length;
   document.getElementById("status").innerText = "待機中...";
 }
-
 
 // ==========================================
 // CSV送信
@@ -262,7 +324,9 @@ function sendCSVToGmail() {
       csvData: csv,
       fileName: `Data_${subjectId}_${new Date().toISOString().slice(0,10)}.csv`
     })
-  }).then(()=>alert("送信完了"));
+  })
+  .then(() => alert("送信完了"))
+  .catch(err => alert("送信エラー: " + err));
 }
 </script>
 
