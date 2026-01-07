@@ -76,21 +76,27 @@ const MOVE_THRESHOLD = 2.0;
 // メロディパターン
 // ==========================================
 const patterns = {
-  A: [
+  A1: [ 
     "C2","G2","E3","B3","D4","G4","E5",null,
-    "C5","A4","G4","E4","C4","A3","G3","E3",
+    "C5","A4","G4","E4","C4","A3","G3","E3"
+  ],
+  A2: [
     "D2","A2","F3","C4","E4","A4","D5","F5",
     "B4","G4","F4","D4","B3","G3","F3","D3"
   ],
-  B: [
+  B1: [ 
     "C3",null,"E4","G4","B4",null,"C5","G3",
-    "A3","C4","E4","G4","A4","C5","E5",null,
+    "A3","C4","E4","G4","A4","C5","E5",null
+  ],
+  B2: [ 
     "F3","A3","C4","E4","G4","A4","C5",null,
     "G2","B2","D3","F3","G3","B3","D4","G4"
   ]
 };
+const playOrder = ["A1", "B1", "A2", "B2"];
+let currentPatternIndex = 0;
 
-let usePatternA = true;
+//let usePatternA = true;
 
 // ==========================================
 // Wake Lock
@@ -196,8 +202,11 @@ function startSequence() {
   playNextNote();
 }
 
+
 function playNextNote() {
-  const pattern = usePatternA ? patterns.A : patterns.B;
+  const patternKey = playOrder[currentPatternIndex];
+  const pattern = patterns[patternKey];
+
   if (currentNoteIndex >= pattern.length) {
     finishSequence();
     return;
@@ -214,7 +223,7 @@ function playNextNote() {
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
   document.getElementById("status").innerText =
-    `再生中 (${currentNoteIndex+1}/${pattern.length})`;
+    `再生中 ${patternKey} (${currentNoteIndex + 1}/16)`;
 
   setTimeout(() => {
     currentNoteIndex++;
@@ -222,11 +231,18 @@ function playNextNote() {
   }, duration * 1000);
 }
 
+
 function finishSequence() {
   isPlaying = false;
-  usePatternA = !usePatternA;
+  currentNoteIndex = 0;
+
+  // 次の16音パターンへ
+  currentPatternIndex =
+    (currentPatternIndex + 1) % playOrder.length;
+
   document.getElementById("status").innerText = "待機中...";
 }
+
 
 // ==========================================
 // CSV送信
