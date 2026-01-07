@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Logger (Soft Snare & 8-Beat Ver)</title>
+<title>Data Logger (Fixed: Continuous Log & Layers)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
   body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; transition: background 0.5s; }
@@ -14,7 +14,12 @@
   #status, #debug { margin: 15px 0; font-size: 1.2em; }
   #debug { color: #666; font-size: 0.9em; }
   .active { background: #e0f7fa; }
-  .layer-indicator { display: inline-block; padding: 5px 10px; margin: 5px; border-radius: 4px; color: #ccc; background: #ddd; font-size: 0.8em; }
+  
+  /* レイヤーインジケーターのスタイル */
+  .indicators { margin-top: 10px; height: 30px; }
+  .layer-indicator { display: inline-block; padding: 5px 15px; margin: 0 5px; border-radius: 20px; color: #999; background: #ddd; font-size: 0.9em; font-weight: bold; transition: all 0.2s; }
+  .layer-on { background: #ff9800; color: white; transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+  .layer-on.harmony { background: #9c27b0; } /* ハーモニーは紫 */
 </style>
 </head>
 
@@ -29,28 +34,31 @@
 
 <div id="status">停止中</div>
 
+<div class="indicators">
+  <span id="ind-drum" class="layer-indicator">DRUM</span>
+  <span id="ind-harmony" class="layer-indicator harmony">HARMONY</span>
+</div>
+
+<div id="debug">Wait...</div>
+
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxGAOkqkvLAykyJbOldYCZ2qeAh-RpO5i9Mxd0qpktd6pP1246Zu7S4XwJit3KAUSU/exec";
 
 // ==========================================
 // シンセ定義
 // ==========================================
-
-// メインメロディ
 const polySynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: "sawtooth" },
   envelope: { attack: 0.05, decay: 0.2, sustain: 0.3, release: 1 },
   volume: -8
 }).toDestination();
 
-// ハーモニー用
 const harmonySynth = new Tone.PolySynth(Tone.Synth, {
   oscillator: { type: "triangle" },
   envelope: { attack: 0.1, decay: 0.5, sustain: 0.5, release: 1.5 },
   volume: -10
 }).toDestination();
 
-// ドラム：キック
 const kickSynth = new Tone.MembraneSynth({
   pitchDecay: 0.05,
   octaves: 4,
@@ -59,15 +67,12 @@ const kickSynth = new Tone.MembraneSynth({
   volume: -3
 }).toDestination();
 
-// ドラム：スネア（優しく変更）
-// WhiteノイズからPinkノイズへ変更し、Decayを短く、音量を下げました
 const snareSynth = new Tone.NoiseSynth({
   noise: { type: "pink" }, 
   envelope: { attack: 0.001, decay: 0.1, sustain: 0 }, 
   volume: -10 
 }).toDestination();
 
-// ドラム：ハイハット（8分刻み用に追加）
 const hatSynth = new Tone.NoiseSynth({
   noise: { type: "white" },
   envelope: { attack: 0.001, decay: 0.05, sustain: 0 },
@@ -77,7 +82,8 @@ const hatSynth = new Tone.NoiseSynth({
 // ==========================================
 // 変数
 // ==========================================
-let isPlaying = false;
+let isRecording = false; // ログ記録中かどうか
+let isPlaying = false;   // 音楽再生中かどうか
 let currentNoteIndex = 0;
 let currentBPM = 108;
 
@@ -100,49 +106,24 @@ const THRESHOLD_HARMONY = 3.0;
 // パターン定義
 // ==========================================
 const patterns = {
-  A1: [ 
-    "C2","G2","E3","B3","D4","G4","E5",null,
-    "C5","A4","G4","E4","C4","A3","G3","E3"
-  ],
-  A2: [
-    "D2","A2","F3","C4","E4","A4","D5","F5",
-    "B4","G4","F4","D4","B3","G3","F3","D3"
-  ],
-  B1: [ 
-    "C3",null,"E4","G4","B4",null,"C5","G3",
-    "A3","C4","E4","G4","A4","C5","E5",null
-  ],
-  B2: [ 
-    "F3","A3","C4","E4","G4","A4","C5",null,
-    "G2","B2","D3","F3","G3","B3","D4","G4"
-  ]
+  A1: [ "C2","G2","E3","B3","D4","G4","E5",null, "C5","A4","G4","E4","C4","A3","G3","E3" ],
+  A2: [ "D2","A2","F3","C4","E4","A4","D5","F5", "B4","G4","F4","D4","B3","G3","F3","D3" ],
+  B1: [ "C3",null,"E4","G4","B4",null,"C5","G3", "A3","C4","E4","G4","A4","C5","E5",null ],
+  B2: [ "F3","A3","C4","E4","G4","A4","C5",null, "G2","B2","D3","F3","G3","B3","D4","G4" ]
 };
 
 const harmonyPatterns = {
-  A1: [ 
-    "E2","B2","G3","D4","F#4","B4","G5",null, 
-    "E5","C5","B4","G4","E4","C4","B3","G3"
-  ],
-  A2: [
-    "F2","C3","A3","E4","G4","C5","F5","A5", 
-    "D5","B4","A4","F4","D4","B3","A3","F3"
-  ],
-  B1: [ 
-    "E3",null,"G4","B4","D5",null,"E5","B3", 
-    "C4","E4","G4","B4","C5","E5","G5",null
-  ],
-  B2: [ 
-    "A3","C4","E4","G4","B4","C5","E5",null, 
-    "B2","D3","F3","A3","B3","D4","F4","B4"
-  ]
+  A1: [ "E2","B2","G3","D4","F#4","B4","G5",null, "E5","C5","B4","G4","E4","C4","B3","G3" ],
+  A2: [ "F2","C3","A3","E4","G4","C5","F5","A5", "D5","B4","A4","F4","D4","B3","A3","F3" ],
+  B1: [ "E3",null,"G4","B4","D5",null,"E5","B3", "C4","E4","G4","B4","C5","E5","G5",null ],
+  B2: [ "A3","C4","E4","G4","B4","C5","E5",null, "B2","D3","F3","A3","B3","D4","F4","B4" ]
 };
 
 const playOrder = ["A1", "B1", "A2", "B2"];
 let currentPatternIndex = 0;
 
-
 // ==========================================
-// Wake Lock & Start
+// 開始処理
 // ==========================================
 let wakeLock = null;
 async function requestWakeLock() {
@@ -156,7 +137,7 @@ document.getElementById("start").onclick = async () => {
   if (!subjectId) { alert("被験者IDを入力してください"); return; }
   document.getElementById("subject-id").disabled = true;
 
-  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
     const p = await DeviceMotionEvent.requestPermission();
     if (p !== 'granted') return;
   }
@@ -165,10 +146,13 @@ document.getElementById("start").onclick = async () => {
   await requestWakeLock();
   window.addEventListener("devicemotion", handleMotion);
 
+  // 初期化
   startTime = performance.now();
   logData = [];
   exploratoryActionCount = 0;
+  isRecording = true; // 記録開始フラグ
 
+  // ループ開始
   setInterval(updateLoop, 100);
 
   document.getElementById("status").innerText = "歩いてください (ID: " + subjectId + ")";
@@ -183,6 +167,7 @@ document.getElementById("send-btn").onclick = sendCSVToGmail;
 // 加速度処理
 // ==========================================
 function computeMeanStd(arr) {
+  if (arr.length === 0) return { std: 0 };
   const mean = arr.reduce((s,v)=>s+v,0)/arr.length;
   const variance = arr.reduce((s,v)=>s+(v-mean)**2,0)/arr.length;
   return { std: Math.sqrt(variance) };
@@ -200,38 +185,49 @@ function handleMotion(e) {
 
   currentStd = computeMeanStd(motionHistory.map(d=>d.val)).std;
 
+  // 閾値を超えたら再生開始（まだ再生していない場合）
   if (!isPlaying && mag > 13.0) startSequence();
 }
 
 // ==========================================
-// ログ更新 & レイヤー判定
+// ログ更新 & レイヤー判定 (常時実行)
 // ==========================================
 function updateLoop() {
-  if (!isPlaying) return;
+  // 記録中でなければ何もしない（Startボタンを押すまでは動かない）
+  if (!isRecording) return;
 
-  const isDrumActive = currentStd >= THRESHOLD_DRUM;
-  const isHarmonyActive = currentStd >= THRESHOLD_HARMONY;
+  // --- 状態判定 ---
+  const isDrumActive = isPlaying && (currentStd >= THRESHOLD_DRUM);
+  const isHarmonyActive = isPlaying && (currentStd >= THRESHOLD_HARMONY);
+  
+  // UI更新（要素があるか確認してから操作）
+  const drumEl = document.getElementById("ind-drum");
+  const harmEl = document.getElementById("ind-harmony");
+  if (drumEl) drumEl.className = isDrumActive ? "layer-indicator layer-on" : "layer-indicator";
+  if (harmEl) harmEl.className = isHarmonyActive ? "layer-indicator layer-on harmony" : "layer-indicator harmony";
 
-  document.getElementById("ind-drum").className = isDrumActive ? "layer-indicator layer-on" : "layer-indicator";
-  document.getElementById("ind-harmony").className = isHarmonyActive ? "layer-indicator layer-on" : "layer-indicator";
-
+  // 探索的行動のカウント
   const nowMoving = currentStd > MOVE_THRESHOLD;
   if (nowMoving !== isUserMoving) {
     exploratoryActionCount++;
     isUserMoving = nowMoving;
   }
 
-  document.getElementById("debug").innerText =
-    `BPM: 108 / Std: ${currentStd.toFixed(2)}`;
+  // デバッグ表示
+  const statusText = isPlaying ? `再生中: ${playOrder[currentPatternIndex]}` : "待機中(歩くと再生)";
+  document.getElementById("debug").innerText = 
+    `Std: ${currentStd.toFixed(2)} / ${statusText}`;
 
+  // --- ログ記録 (常時) ---
   logData.push({
     time: ((performance.now() - startTime)/1000).toFixed(3),
     std: currentStd.toFixed(4),
-    bpm: 108,
+    bpm: isPlaying ? 108 : 0,  // 再生していないときはBPM0として記録
     isMoving: isUserMoving ? 1 : 0,
     drumLayer: isDrumActive ? 1 : 0,
     harmonyLayer: isHarmonyActive ? 1 : 0,
-    switchCount: exploratoryActionCount
+    switchCount: exploratoryActionCount,
+    pattern: isPlaying ? playOrder[currentPatternIndex] : "None"
   });
 }
 
@@ -245,18 +241,22 @@ function startSequence() {
 }
 
 function playNextNote() {
+  if (!isPlaying) return; // 念のため
+
   const patternKey = playOrder[currentPatternIndex];
   const melodyList = patterns[patternKey];
   const harmonyList = harmonyPatterns[patternKey];
 
+  // パターン終了判定
   if (currentNoteIndex >= melodyList.length) {
     finishSequence();
     return;
   }
 
+  // リズム計算
   const beatTime = 60 / currentBPM;
   const base = beatTime / 2;
-  const swing = 0.25;
+  const swing = 0.25; // 少しスウィング
   const duration = currentNoteIndex % 2 === 0
     ? base * (1 + swing)
     : base * (1 - swing);
@@ -265,17 +265,13 @@ function playNextNote() {
   const note = melodyList[currentNoteIndex];
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
-  // 2. ドラムレイヤー 
+  // 2. ドラムレイヤー
   if (currentStd >= THRESHOLD_DRUM) {
-    // ハイハット: 毎回鳴らす（8分音符刻み＝2倍の密度）
-    //hatSynth.triggerAttackRelease("16n");
-
-    // Kick
+    // Kick: 拍の頭(偶数インデックス)
     if (currentNoteIndex % 2 === 0) {
       kickSynth.triggerAttackRelease("C1", "16n");
     }
-
-    // Snare: 2拍目(4) と 4拍目(12) （音色を優しく変更済み）
+    // Snare: 2拍目(4) と 4拍目(12) 
     if (currentNoteIndex === 4 || currentNoteIndex === 12) {
       snareSynth.triggerAttackRelease("8n");
     }
@@ -292,6 +288,7 @@ function playNextNote() {
   document.getElementById("status").innerText =
     `再生中 ${patternKey} (${currentNoteIndex + 1}/16)`;
 
+  // 次の音へ
   setTimeout(() => {
     currentNoteIndex++;
     playNextNote();
@@ -301,32 +298,60 @@ function playNextNote() {
 function finishSequence() {
   isPlaying = false;
   currentNoteIndex = 0;
+  // 次のパターンへ
   currentPatternIndex = (currentPatternIndex + 1) % playOrder.length;
-  document.getElementById("status").innerText = "待機中...";
   
-  document.getElementById("ind-drum").className = "layer-indicator";
-  document.getElementById("ind-harmony").className = "layer-indicator";
+  document.getElementById("status").innerText = "待機中... (動き続けて継続)";
+  
+  // もし動き続けていたらすぐ再開（オプション）
+  if (currentStd > 10.0) {
+     startSequence();
+  }
 }
 
 // ==========================================
 // CSV送信
 // ==========================================
 function sendCSVToGmail() {
-  if (!logData.length) return alert("データなし");
+  // 記録を停止
+  isRecording = false; 
+  isPlaying = false;
+  document.getElementById("status").innerText = "送信処理中...";
+
+  if (!logData.length) {
+    alert("データがありません（Startを押して時間を置いてください）");
+    return;
+  }
 
   const subjectId = document.getElementById("subject-id").value;
-  let csv = "Time,STD,BPM,IsMoving,DrumLayer,HarmonyLayer,SwitchCount\n";
+  
+  // CSVヘッダー作成
+  let csv = "Time,STD,BPM,IsMoving,DrumLayer,HarmonyLayer,SwitchCount,Pattern\n";
+  
+  // データ行作成
   logData.forEach(r=>{
-    csv += `${r.time},${r.std},${r.bpm},${r.isMoving},${r.drumLayer},${r.harmonyLayer},${r.switchCount}\n`;
+    csv += `${r.time},${r.std},${r.bpm},${r.isMoving},${r.drumLayer},${r.harmonyLayer},${r.switchCount},${r.pattern}\n`;
   });
 
+  // GASへ送信
   fetch(GAS_URL, {
     method: "POST",
     body: JSON.stringify({
       csvData: csv,
       fileName: `Data_${subjectId}_${new Date().toISOString().slice(0,10)}.csv`
     })
-  }).then(()=>alert("送信完了"));
+  })
+  .then(response => {
+    if (response.ok) {
+       alert("送信完了！");
+       document.getElementById("status").innerText = "送信完了";
+    } else {
+       alert("送信エラー: " + response.statusText);
+    }
+  })
+  .catch(err => {
+    alert("通信エラー: " + err);
+  });
 }
 </script>
 
