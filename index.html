@@ -15,7 +15,6 @@
   #debug { color: #666; font-size: 0.9em; }
   .active { background: #e0f7fa; }
   .layer-indicator { display: inline-block; padding: 5px 10px; margin: 5px; border-radius: 4px; color: #ccc; background: #ddd; font-size: 0.8em; }
-  .layer-on { background: #ff9800; color: white; font-weight: bold; }
 </style>
 </head>
 
@@ -29,12 +28,6 @@
 <button id="send-btn">送信</button>
 
 <div id="status">停止中</div>
-<div>
-  <span id="ind-melody" class="layer-indicator layer-on">Melody</span>
-  <span id="ind-drum" class="layer-indicator">Drum (Std>3.0)</span>
-  <span id="ind-harmony" class="layer-indicator">Harmony (Std>5.0)</span>
-</div>
-<div id="debug">Wait...</div>
 
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxGAOkqkvLAykyJbOldYCZ2qeAh-RpO5i9Mxd0qpktd6pP1246Zu7S4XwJit3KAUSU/exec";
@@ -272,7 +265,7 @@ function playNextNote() {
   const note = melodyList[currentNoteIndex];
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
-  // 2. ドラムレイヤー (Std >= 3.0)
+  // 2. ドラムレイヤー 
   if (currentStd >= THRESHOLD_DRUM) {
     // ハイハット: 毎回鳴らす（8分音符刻み＝2倍の密度）
     //hatSynth.triggerAttackRelease("16n");
@@ -288,7 +281,7 @@ function playNextNote() {
     }
   }
 
-  // 3. ハーモニーレイヤー (Std >= 5.0)
+  // 3. ハーモニーレイヤー
   if (currentStd >= THRESHOLD_HARMONY) {
     const harmNote = harmonyList[currentNoteIndex];
     if (harmNote) {
