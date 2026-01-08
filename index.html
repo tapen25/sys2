@@ -369,7 +369,7 @@ function sendCSVToGmail() {
     method: "POST",
     body: JSON.stringify({
       csvData: csv,
-      fileName: `Data_${subjectId}_${new Date().toISOString().slice(0,10)}.csv`
+      fileName: `Datalayer_${subjectId}_${new Date().toISOString().slice(0,10)}.csv`
     })
   })
   .then(response => {
