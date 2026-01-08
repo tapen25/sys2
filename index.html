@@ -214,7 +214,7 @@ function updateLoop() {
   }
 
   // デバッグ表示
-  const statusText = isPlaying ? `再生中: ${playOrder[currentPatternIndex]}` : "待機中(歩くと再生)";
+  const statusText = isPlaying ? `再生中: ${playOrder[currentPatternIndex]}` : "待機中";
   document.getElementById("debug").innerText = 
     `Std: ${currentStd.toFixed(2)} / ${statusText}`;
 
@@ -285,8 +285,8 @@ function playNextNote() {
     }
   }
 
-  document.getElementById("status").innerText =
-    `再生中 ${patternKey} (${currentNoteIndex + 1}/16)`;
+  /*document.getElementById("status").innerText =
+    `再生中 ${patternKey} (${currentNoteIndex + 1}/16)`;*/
 
   // 次の音へ
   setTimeout(() => {
