@@ -269,16 +269,16 @@ function playNextNote() {
   if (note) polySynth.triggerAttackRelease(note, duration * 0.8);
 
   // 2. ドラムレイヤー
-  if (currentStd >= THRESHOLD_DRUM) {
+ /* if (currentStd >= THRESHOLD_DRUM) {
     // Kick: 拍の頭(偶数インデックス)
     /*if (currentNoteIndex % 2 === 0) {
       kickSynth.triggerAttackRelease("C1", "16n");
-    }*/
+    }
     // Snare: 2拍目(4) と 4拍目(12) 
     if (currentNoteIndex === 4 || currentNoteIndex === 12) {
       snareSynth.triggerAttackRelease("8n");
     }
-  }
+  }*/
 
   // 3. ハーモニーレイヤー
   if (currentStd >= THRESHOLD_HARMONY) {
